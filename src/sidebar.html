@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AI Sidebar</title>
+<link rel="stylesheet" href="sidebar.css">
+</head>
+<body>
+
+  <main class="content">
+
+    <!-- Recently used (hidden until a site has been opened) -->
+    <section id="recentSection" class="recent hidden">
+      <h2 class="section-title">Recently used</h2>
+      <button id="recentCard" class="recent-card" type="button">
+        <img id="recentIcon" class="recent-icon" alt="">
+        <span class="recent-meta">
+          <span id="recentLabel" class="recent-label"></span>
+          <span id="recentHint" class="recent-hint"></span>
+        </span>
+        <span class="recent-arrow">→</span>
+      </button>
+    </section>
+
+    <!-- All AI sites -->
+    <h2 class="section-title">All assistants</h2>
+    <div id="siteGrid" class="grid"></div>
+
+  </main>
+
+  <!-- Loading overlay -->
+  <div id="loadingOverlay" class="loading-overlay hidden" role="status" aria-label="Loading">
+    <div class="spinner" aria-hidden="true"></div>
+  </div>
+
+  <script src="sidebar.js"></script>
+</body>
+</html>

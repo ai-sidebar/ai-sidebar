@@ -1,0 +1,40 @@
+{
+  "manifest_version": 2,
+  "name": "ai sidebar",
+  "description": "Adds various AI assistants like ChatGPT, Claude, Gemini, Deepseek and others Firefox doesn't natively have into your sidebar",
+  "version": "1.0.0",
+  "author": "yellowdevelopment",
+
+  "icons": {
+    "16": "src/icons/icon-16.png",
+    "32": "src/icons/icon-32.png",
+    "48": "src/icons/icon-48.png",
+    "64": "src/icons/icon-64.png"
+  },
+
+  "sidebar_action": {
+    "default_panel": "src/sidebar.html",
+    "default_title": "ai sidebar",
+    "default_icon": {
+      "16": "src/icons/icon-16.png",
+      "32": "src/icons/icon-32.png",
+      "48": "src/icons/icon-48.png",
+      "64": "src/icons/icon-64.png"
+    },
+    "open_at_install": false
+  },
+
+  "permissions": [
+    "storage"
+  ],
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ai-sidebar@yellowdevelopment",
+      "strict_min_version": "78.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}
