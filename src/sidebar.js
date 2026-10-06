@@ -1,14 +1,5 @@
-/*
- * AI Sidebar — sidebar.js
- * ------------------------------------------------------------------
- * Landing page shown when the sidebar opens. Lists the AI sites with a
- * "Recently used" card. Clicking a site navigates the sidebar directly to
- * that site (no iframe, no webRequest, no header modification).
- *
- * No analytics, no telemetry.
- */
+const ext = globalThis.browser ?? globalThis.chrome;
 
-// ---------- Built-in sites ----------
 const BUILTIN_SITES = [
   { id: "chatgpt",  name: "ChatGPT",           url: "https://chatgpt.com",           icon: "icons/chatgpt.png" },
   { id: "claude",   name: "Anthropic Claude",  url: "https://claude.ai",             icon: "icons/claude.png" },
@@ -33,20 +24,116 @@ const recentIcon    = document.getElementById("recentIcon");
 const recentLabel   = document.getElementById("recentLabel");
 const recentHint    = document.getElementById("recentHint");
 const siteGrid      = document.getElementById("siteGrid");
+const hiddenSection = document.getElementById("hiddenSection");
+const hiddenToggle  = document.getElementById("hiddenToggle");
+const hiddenLabel   = document.getElementById("hiddenLabel");
+const hiddenGrid    = document.getElementById("hiddenGrid");
 const loadingOverlay = document.getElementById("loadingOverlay");
+const versionLabel  = document.getElementById("versionLabel");
+const addSiteButton = document.getElementById("addSiteButton");
+const addDialog     = document.getElementById("addDialog");
+const addForm       = document.getElementById("addForm");
+const addUrl        = document.getElementById("addUrl");
+const addName       = document.getElementById("addName");
+const addError      = document.getElementById("addError");
+const addCancel     = document.getElementById("addCancel");
 
 let favorites = [];
+let hidden = [];
+let recentSite = null;
+let customSites = [];
 
-// ---------- Grid ----------
+function catalog() {
+  return [...BUILTIN_SITES, ...customSites];
+}
+
 function allSites() {
-  const byId = new Map(BUILTIN_SITES.map((s) => [s.id, s]));
-  const favored = favorites.map((id) => byId.get(id)).filter(Boolean);
+  const byId = new Map(catalog().map((s) => [s.id, s]));
+  const favored = favorites
+    .filter((id) => !hidden.includes(id))
+    .map((id) => byId.get(id))
+    .filter(Boolean);
   const favoredIds = new Set(favored.map((s) => s.id));
-  const rest = BUILTIN_SITES.filter((s) => !favoredIds.has(s.id));
+  const rest = catalog().filter((s) => !favoredIds.has(s.id) && !hidden.includes(s.id));
   return [...favored, ...rest];
 }
 
-function makeTile(site) {
+function hiddenSites() {
+  const byId = new Map(catalog().map((s) => [s.id, s]));
+  return hidden.map((id) => byId.get(id)).filter(Boolean);
+}
+
+// ---------- SVG icons (built as DOM nodes, no innerHTML) ----------
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function makeSvg(size, children) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", size);
+  svg.setAttribute("height", size);
+  svg.setAttribute("aria-hidden", "true");
+  children.forEach(([tag, attrs]) => {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    svg.appendChild(el);
+  });
+  return svg;
+}
+
+const EYE_EDGE  = ["path", { d: "M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z" }];
+const EYE_PUPIL = ["circle", { cx: 12, cy: 12, r: 2.7 }];
+
+const eyeOnIcon  = () => makeSvg(22, [EYE_EDGE, EYE_PUPIL]);
+const eyeOffIcon = () => makeSvg(22, [EYE_EDGE, EYE_PUPIL, ["line", { x1: 4, y1: 20, x2: 20, y2: 4 }]]);
+const trashIcon  = () => makeSvg(21, [
+  ["path", { d: "M4 7h16" }],
+  ["path", { d: "M10 4h4" }],
+  ["path", { d: "M6 7l1 13h10l1-13" }],
+  ["path", { d: "M10.5 11v6" }],
+  ["path", { d: "M13.5 11v6" }],
+]);
+const starIcon = () => makeSvg(26, [
+  ["path", { d: "M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" }],
+]);
+
+function makeActionButton(label, makeIcon, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "tile-action";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.appendChild(makeIcon());
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onClick();
+  });
+  return button;
+}
+
+function setIcon(img, site) {
+  const candidates = [site.icon].concat(site.iconFallbacks || []).filter(Boolean);
+  let next = 0;
+
+  if (candidates.length === 0) {
+    img.style.opacity = "0";
+    return img;
+  }
+
+  img.onload = () => { img.style.opacity = ""; };
+  img.onerror = () => {
+    next += 1;
+    if (next < candidates.length) {
+      img.src = candidates[next];
+    } else {
+      img.style.opacity = "0";
+    }
+  };
+  img.style.opacity = "";
+  img.src = candidates[0];
+  return img;
+}
+
+function makeTile(site, isHidden) {
   const tile = document.createElement("button");
   tile.type = "button";
   tile.className = "tile";
@@ -54,9 +141,8 @@ function makeTile(site) {
 
   const icon = document.createElement("img");
   icon.className = "tile-icon";
-  icon.src = site.icon;
   icon.alt = "";
-  icon.onerror = () => { icon.style.opacity = "0"; };
+  setIcon(icon, site);
   tile.appendChild(icon);
 
   const name = document.createElement("span");
@@ -64,24 +150,41 @@ function makeTile(site) {
   name.textContent = site.name;
   tile.appendChild(name);
 
+  if (isHidden) {
+    tile.appendChild(makeActionButton("Unhide " + site.name, eyeOnIcon, () => toggleHidden(site)));
+    return tile;
+  }
+
   const fav = document.createElement("button");
   fav.type = "button";
   fav.className = "tile-fav" + (favorites.includes(site.id) ? " active" : "");
   fav.title = favorites.includes(site.id) ? "Remove from favorites" : "Add to favorites";
   fav.setAttribute("aria-pressed", favorites.includes(site.id) ? "true" : "false");
-  fav.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>';
+  fav.appendChild(starIcon());
   fav.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleFavorite(site);
   });
   tile.appendChild(fav);
 
+  tile.appendChild(makeActionButton("Hide " + site.name, eyeOffIcon, () => toggleHidden(site)));
+
+  if (site.custom) {
+    tile.appendChild(makeActionButton("Remove " + site.name, trashIcon, () => removeSite(site)));
+  }
+
   return tile;
 }
 
 function renderGrid() {
-  siteGrid.innerHTML = "";
+  siteGrid.replaceChildren();
   allSites().forEach((site) => siteGrid.appendChild(makeTile(site)));
+
+  const hiddenList = hiddenSites();
+  hiddenGrid.replaceChildren();
+  hiddenList.forEach((site) => hiddenGrid.appendChild(makeTile(site, true)));
+  hiddenLabel.textContent = "Hidden (" + hiddenList.length + ")";
+  hiddenSection.classList.toggle("hidden", hiddenList.length === 0);
 }
 
 // ---------- Loading spinner ----------
@@ -98,8 +201,18 @@ function hideSpinner() {
 function navigate(url, startedAt) {
   const wait = Math.max(0, 300 - (Date.now() - startedAt));
   setTimeout(() => {
-    window.location.href = url;
+    goTo(url);
   }, wait);
+}
+
+function goTo(url) {
+  if (ext.sidePanel) {
+    ext.sidePanel.setOptions({ path: url }).catch(() => {
+      window.location.href = url;
+    });
+  } else {
+    window.location.href = url;
+  }
 }
 
 window.addEventListener("pageshow", hideSpinner);
@@ -109,8 +222,14 @@ function openSite(site) {
   showSpinner();
   const started = Date.now();
 
-  browser.storage.local.set({
-    lastUsed: { name: site.name, url: site.url, icon: site.icon }
+  ext.storage.local.set({
+    lastUsed: {
+      id: site.id,
+      name: site.name,
+      url: site.url,
+      icon: site.icon,
+      iconFallbacks: site.iconFallbacks || []
+    }
   }).then(() => {
     navigate(site.url, started);
   }).catch(() => {
@@ -120,12 +239,12 @@ function openSite(site) {
 
 // ---------- Recently used ----------
 function renderRecent(lastUsed) {
-  if (!lastUsed || !lastUsed.url) {
+  recentSite = lastUsed || null;
+  if (!lastUsed || !lastUsed.url || hidden.includes(lastUsed.id)) {
     recentSection.classList.add("hidden");
     return;
   }
-  recentIcon.src = lastUsed.icon;
-  recentIcon.onerror = () => { recentIcon.style.opacity = "0"; };
+  setIcon(recentIcon, lastUsed);
   recentLabel.textContent = lastUsed.name;
   try {
     recentHint.textContent = new URL(lastUsed.url).hostname.replace(/^www\./, "");
@@ -147,15 +266,149 @@ function toggleFavorite(site) {
   } else {
     favorites.splice(i, 1);
   }
-  browser.storage.local.set({ favorites }).then(() => {
+  ext.storage.local.set({ favorites }).then(() => {
     renderGrid();
   });
 }
 
+// ---------- Hidden ----------
+function toggleHidden(site) {
+  const i = hidden.indexOf(site.id);
+  if (i === -1) {
+    hidden.push(site.id);
+  } else {
+    hidden.splice(i, 1);
+  }
+  ext.storage.local.set({ hidden }).then(() => {
+    renderGrid();
+    renderRecent(recentSite);
+  });
+}
+
+hiddenToggle.addEventListener("click", () => {
+  const open = hiddenSection.classList.toggle("open");
+  hiddenToggle.setAttribute("aria-expanded", open ? "true" : "false");
+});
+
+function normalizeUrl(value) {
+  let text = String(value || "").trim();
+  if (!text) return null;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) text = "https://" + text;
+
+  let parsed;
+  try {
+    parsed = new URL(text);
+  } catch (e) {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  if (!parsed.hostname.includes(".")) return null;
+  return parsed.href;
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch (e) {
+    return "";
+  }
+}
+
+// The site's own /favicon.ico first, favicon services only as a fallback.
+function faviconFor(url) {
+  const host = new URL(url).hostname;
+  return {
+    icon: new URL(url).origin + "/favicon.ico",
+    iconFallbacks: [
+      "https://icons.duckduckgo.com/ip3/" + host + ".ico",
+      "https://www.google.com/s2/favicons?sz=128&domain=" + host
+    ]
+  };
+}
+
+function findSite(url) {
+  const clean = url.replace(/\/+$/, "");
+  return catalog().find((site) => site.url.replace(/\/+$/, "") === clean);
+}
+
+function addSiteFromForm() {
+  const url = normalizeUrl(addUrl.value);
+  if (!url) return "Enter a valid website address, for example https://example.com";
+  if (findSite(url)) return "That website is already in the list";
+
+  const site = {
+    id: "custom:" + Date.now().toString(36),
+    name: addName.value.trim() || hostOf(url),
+    url,
+    custom: true
+  };
+  Object.assign(site, faviconFor(url));
+
+  customSites.push(site);
+  ext.storage.local.set({ customSites }).then(() => {
+    closeAddDialog();
+    renderGrid();
+  });
+  return "";
+}
+
+function removeSite(site) {
+  customSites = customSites.filter((s) => s.id !== site.id);
+  favorites = favorites.filter((id) => id !== site.id);
+  hidden = hidden.filter((id) => id !== site.id);
+
+  const patch = { customSites, favorites, hidden };
+  if (recentSite && recentSite.id === site.id) {
+    recentSite = null;
+    patch.lastUsed = null;
+  }
+
+  ext.storage.local.set(patch).then(() => {
+    renderGrid();
+    renderRecent(recentSite);
+  });
+}
+
+function openAddDialog() {
+  addForm.reset();
+  addError.textContent = "";
+  addError.classList.add("hidden");
+  addDialog.classList.remove("hidden");
+  addUrl.focus();
+}
+
+function closeAddDialog() {
+  addDialog.classList.add("hidden");
+}
+
+addSiteButton.addEventListener("click", openAddDialog);
+addCancel.addEventListener("click", closeAddDialog);
+
+addDialog.addEventListener("click", (e) => {
+  if (e.target === addDialog) closeAddDialog();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !addDialog.classList.contains("hidden")) closeAddDialog();
+});
+
+addForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const problem = addSiteFromForm();
+  if (problem) {
+    addError.textContent = problem;
+    addError.classList.remove("hidden");
+  }
+});
+
+// ---------- Version ----------
+versionLabel.textContent = "v" + ext.runtime.getManifest().version;
+
 // ---------- Init ----------
-browser.storage.local.get(["lastUsed", "favorites"]).then((data) => {
+ext.storage.local.get(["lastUsed", "favorites", "hidden", "customSites"]).then((data) => {
   favorites = data.favorites || [];
+  hidden = data.hidden || [];
+  customSites = data.customSites || [];
   renderGrid();
   renderRecent(data.lastUsed);
 });
-

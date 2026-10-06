@@ -1,20 +1,33 @@
 {
-  "manifest_version": 2,
-  "name": "ai sidebar",
-  "description": "Adds various AI assistants like ChatGPT, Claude, Gemini, Deepseek and others Firefox doesn't natively have into your sidebar",
-  "version": "1.0.0",
+  "manifest_version": 3,
+  "name": "Ai Sidebar",
+  "description": "Adds various AI assistants like ChatGPT, Claude, Gemini, Deepseek and others into your sidebar",
+  "version": "1.1.1",
   "author": "yellowdevelopment",
+  "minimum_chrome_version": "121",
 
   "icons": {
     "16": "src/icons/icon-16.png",
     "32": "src/icons/icon-32.png",
     "48": "src/icons/icon-48.png",
-    "64": "src/icons/icon-64.png"
+    "64": "src/icons/icon-64.png",
+    "96": "src/icons/icon-96.png"
+  },
+
+  "action": {
+    "default_title": "Ai Sidebar",
+    "default_icon": {
+      "16": "src/icons/icon-16.png",
+      "32": "src/icons/icon-32.png",
+      "48": "src/icons/icon-48.png",
+      "64": "src/icons/icon-64.png",
+      "96": "src/icons/icon-96.png"
+    }
   },
 
   "sidebar_action": {
     "default_panel": "src/sidebar.html",
-    "default_title": "ai sidebar",
+    "default_title": "Ai Sidebar",
     "default_icon": {
       "16": "src/icons/icon-16.png",
       "32": "src/icons/icon-32.png",
@@ -24,14 +37,24 @@
     "open_at_install": false
   },
 
+  "side_panel": {
+    "default_path": "src/sidebar.html"
+  },
+
+  "background": {
+    "scripts": ["src/background.js"],
+    "service_worker": "src/background.js"
+  },
+
   "permissions": [
-    "storage"
+    "storage",
+    "sidePanel"
   ],
 
   "browser_specific_settings": {
     "gecko": {
       "id": "ai-sidebar@yellowdevelopment",
-      "strict_min_version": "78.0",
+      "strict_min_version": "109.0",
       "data_collection_permissions": {
         "required": ["none"]
       }
